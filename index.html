@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Quotations</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+HK&display=swap" rel="stylesheet"> 
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+    <script src="https://code.jquery.com/jquery-3.4.1.slim.min.js" integrity="sha384-J6qa4849blE2+poT4WnyKhv5vZF5SrPo0iEjwBvKU7imGFAV0wwj1yYfoRSJoZ+n" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js" integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo" crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js" integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6" crossorigin="anonymous"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/vue"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.19.2/axios.min.js"></script>
+
+    <style>
+      * {
+        font-family: 'Noto Sans HK', sans-serif;
+      }
+      body {
+        padding-bottom: 128px;
+      }
+      #header {
+        margin: 16px 0px 16px 0px;
+      }
+      #search {
+        padding: 22px 16px 22px 16px;
+      }
+      .quote {
+        margin-bottom: 16px;
+        padding: 10px 10px 24px 10px;
+        border-bottom: 1px dotted #CECECE;
+      }
+      .quote-text {
+        font-size: 1.2em;
+      }
+      .author {
+        margin-left: 24px;
+        font-weight: bold;
+        color: #676767;
+      }
+      .source {
+        font-size: 0.8em;
+        color: #676767;
+      }
+      .tag-container {
+        text-align: right;
+      }
+      .tag {
+        border-radius: 12px;
+        background-color: #17A2B8;
+        color: #FFFFFF;
+        padding: 5px 10px;
+        margin-left: 5px;
+        font-size: 0.8em;
+      }
+
+      #sidebar {
+        padding: 12px;
+      }
+
+      .menu-item {
+        cursor: pointer;
+      }
+      .menu-item:hover {
+        color: #4477AA;
+      }
+      #reset-filter {
+        cursor: pointer;
+        margin-bottom: 24px;
+      }
+      #reset-filter:hover {
+        color: #4477AA;
+      }
+    </style>
+  </head>
+
+  <body>
+
+    <div id="app">
+    </div>
+      
+    <div id="content" class="container">
+
+      <div id="header" class="row">
+        <input
+          id="search"
+          v-on:input="filterQuotes"
+          type="search"
+          placeholder="Search Quotes"
+          class="form-control bg-none border-1">
+      </div>
+
+      <div class="row">
+
+        <div id="quotes" class="col-lg-9">
+          <div v-for="quote in quotes" class="quote">
+            <div class="quote-text">"{{ quote.quote }}"</div>
+            <div>
+              <span class="author">- {{ quote.author}}</span>
+              <span class="source" v-if="quote.source != ''">({{ quote.source }})</span>
+            </div>
+            <div class="tag-container">
+              <span v-for="tag in quote.tags" class="tag">
+                {{ tag }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div id="sidebar" class="col-lg-3">
+
+          <div id="reset-filter" v-on:click="reset">
+            Reset Filters
+          </div>
+          
+          <div id="authors">
+            <div>
+              Authors
+            </div>
+            <ul>
+              <li class="menu-item" v-for="author in authors" v-on:click="selectAuthor" :data="author">
+                {{ author }}
+              </li>
+            </ul>
+          </div>
+
+          <div id="tags">
+            <div>
+              Tags
+            </div>
+            <ul>
+              <li class="menu-item" v-for="tag in tags" v-on:click="selectTag" :data="tag">
+                {{ tag }}
+              </li>
+            </ul>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+    <script>
+      // URL to the JSON data of the Google Spreadsheet
+      var gsheet_url = "https://spreadsheets.google.com/feeds/list/1eNmGC4mZpIGx9vyL_Y0m0wEvsnlREGYoj04LH9atoTg/1/public/values?alt=json";
+      
+      // Global variables to hold the data from the spreadsheet
+      var quoteList = [];
+      var authorList = [];
+      var tagList = [];
+      
+      // Load data when the page is ready
+      var app = new Vue({
+        el: '#app',
+        data () {
+          return {
+            info: null
+          }
+        },
+        mounted () {
+          axios
+            .get(gsheet_url)
+            .then(response => (
+              parseData(response.data.feed.entry)
+            ))
+        }
+      });
+
+      // Search bar
+      var search = new Vue({
+        el: '#search',
+        methods: {
+          filterQuotes: function(event) {
+            var query = event.target.value;
+
+            // Reset filter if query is empty string
+            if (query.length == 0) {
+              quotes.quotes = quoteList;
+            }
+
+            // Do nothing if query is too short
+            if (query.length < 3) return;
+            
+            var filtered = [];
+            query = query.toLowerCase();
+            console.log(query);
+
+            // Search in quote, author and source
+            quoteList.forEach(function(value) {
+              var quote = value.quote.toLowerCase();
+              var author = value.author.toLowerCase();
+              var source = value.source.toLowerCase();
+              if (
+                (quote.search(query) >= 0) ||
+                (author.search(query) >= 0) ||
+                (source.search(query) >= 0)) {
+                filtered.push(value);
+              }
+            });
+            quotes.quotes = filtered;
+          }
+        }
+      });
+
+      var quotes = new Vue({
+        el: '#quotes',
+        data: {
+          quotes: quoteList
+        }
+      });
+
+      var authors = new Vue({
+        el: '#authors',
+        data: {
+          authors: authorList
+        },
+        methods: {
+          selectAuthor: function(event) {
+            var selected = [];
+            var author = event.target.getAttribute('data');
+            quoteList.forEach(function(value) {
+              if (value.author == author) {
+                selected.push(value);
+              }
+            });
+            quotes.quotes = selected;
+          }
+        }
+      });
+
+      var resetFilter = new Vue({
+        el: '#reset-filter',
+        methods: {
+          reset: function(event) {
+            quotes.quotes = quoteList;
+          }
+        }
+      });
+
+      var tags = new Vue({
+        el: '#tags',
+        data: {
+          tags: tagList
+        },
+        methods: {
+          selectTag: function(event) {
+            var selected = [];
+            var tag = event.target.getAttribute('data');
+            quoteList.forEach(function(value) {
+              if (value.tags.includes(tag)) {
+                selected.push(value);
+              }
+            });
+            quotes.quotes = selected;
+          }
+        }
+      });
+
+      function parseData(entries) {
+        
+        var authorSet = new Set();
+        var tagSet = new Set();
+
+        entries.forEach(function(value) {
+          var entry = {
+            "quote": value.gsx$quote.$t,
+            "author": value.gsx$author.$t,
+            "source": value.gsx$source.$t,
+            "tags": value.gsx$tags.$t.split(",")
+          };
+          authorSet.add(entry.author);
+
+          entry.tags.forEach(function(t) {
+            tagSet.add(t);
+          });
+
+          quoteList.push(entry);
+        });
+        authorList = Array.from(authorSet);
+        authorList.sort();
+
+        tagList = Array.from(tagSet);
+        tagList.sort();
+
+        quotes.quotes = quoteList;
+        authors.authors = authorList;
+        tags.tags = tagList;
+      }
+
+    </script>
+
+  </body>
+</html>
